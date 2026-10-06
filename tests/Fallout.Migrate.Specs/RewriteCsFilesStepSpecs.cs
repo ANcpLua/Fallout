@@ -56,6 +56,27 @@ public class RewriteCsFilesStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Nuke_inside_another_dotted_name_is_left_alone()
+    {
+        // Arrange
+        const string input = """
+                             using Acme.Nuke.Tools;
+                             using Nuke.Common;
+                             """;
+
+        (tempDirectory / "Build.cs").WriteAllText(input, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsFilesStep().ExecuteAsync(context, summary);
+
+        // Assert
+        summary.EditCount.Should().Be(1);
+        var buildCs = (tempDirectory / "Build.cs").ReadAllText();
+        buildCs.Should().Contain("using Acme.Nuke.Tools;");
+        buildCs.Should().Contain("using Fallout.Common;");
+    }
+
+    [Fact]
     public async Task NukeBuild_base_type_is_renamed_to_FalloutBuild()
     {
         (tempDirectory / "Build.cs").WriteAllText("class Build : NukeBuild { }");

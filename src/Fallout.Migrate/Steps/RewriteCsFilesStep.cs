@@ -21,12 +21,14 @@ internal sealed class RewriteCsFilesStep : IMigrationStep
     private static readonly Regex projectModelNamespace =
         new(@"\b(?:Nuke|Fallout)\.Common\.ProjectModel\b", RegexOptions.Compiled);
 
-    // Anchored prefix swap: `\bNuke\.` → `Fallout.`. Covers using directives,
+    // Anchored prefix swap: `Nuke.` → `Fallout.`. Covers using directives,
     // attribute references, qualified type names, namespace declarations.
+    // The leading `(?<![\w.])` lookbehind keeps a `Nuke` segment inside another
+    // dotted name (`Acme.Nuke.Tools`) as it is.
     // The trailing `(?=[A-Z])` lookahead avoids matching `Nuke.json` filenames
     // or other lowercase tails the prefix audit deliberately preserved.
     private static readonly Regex namespacePrefix =
-        new(@"\bNuke\.(?=[A-Z])", RegexOptions.Compiled);
+        new(@"(?<![\w.])Nuke\.(?=[A-Z])", RegexOptions.Compiled);
 
     // Bare type renames done in the Fallout rebrand (#59).
     private static readonly Regex nukeBuildType = new(@"\bNukeBuild\b", RegexOptions.Compiled);

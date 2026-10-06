@@ -50,6 +50,20 @@ internal sealed class BumpDotNetVersionStep : IMigrationStep
         @"(?<=""sdk""\s*:\s*\{[^}]*?""version""\s*:\s*"")[^""]+",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
+    /// <summary>
+    /// The roll-forward policy added to <c>global.json</c> when the SDK is pinned and no policy is set.
+    /// Without one, the default <c>patch</c> policy needs a 10.0.1xx SDK, so a machine with only a
+    /// later feature band (for example 10.0.4xx) fails every <c>dotnet</c> command.
+    /// </summary>
+    private const string RollForward = "latestFeature";
+
+    /// <summary>
+    /// Matches a <c>rollForward</c> property inside <c>global.json</c>'s <c>sdk</c> object.
+    /// </summary>
+    private static readonly Regex sdkRollForwardPattern = new(
+        @"""sdk""\s*:\s*\{[^}]*""rollForward""",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
     /// <inheritdoc />
     public Task ExecuteAsync(MigrationContext context, Summary summary)
     {
@@ -91,7 +105,8 @@ internal sealed class BumpDotNetVersionStep : IMigrationStep
 
     /// <summary>
     /// Rewrites <c>global.json</c>'s <c>sdk.version</c> to <see cref="SdkVersion"/> only when the
-    /// current version is behind <see cref="minimumSupportedSdkVersion"/>.
+    /// current version is behind <see cref="minimumSupportedSdkVersion"/>, and adds
+    /// <see cref="RollForward"/> when the <c>sdk</c> object has no <c>rollForward</c> yet.
     /// </summary>
     /// <param name="original">The original <c>global.json</c> content.</param>
     /// <returns>The rewritten content and the number of edits made.</returns>
@@ -104,7 +119,39 @@ internal sealed class BumpDotNetVersionStep : IMigrationStep
         }
 
         string content = sdkVersionPattern.Replace(original, SdkVersion, count: 1);
-        return new RewriteResult(content, 1);
+        if (sdkRollForwardPattern.IsMatch(content))
+        {
+            return new RewriteResult(content, 1);
+        }
+
+        // Insert after the closing quote of the new version value.
+        int insertAt = match.Index + SdkVersion.Length + 1;
+        content = content.Insert(insertAt, $",{PropertySeparator(original, match.Index)}\"rollForward\": \"{RollForward}\"");
+        return new RewriteResult(content, 2);
+    }
+
+    /// <summary>
+    /// Returns the text to put before a new property next to the <c>version</c> property: a line
+    /// break plus the same indentation when <c>version</c> starts its own line, otherwise a space.
+    /// </summary>
+    /// <param name="original">The original <c>global.json</c> content.</param>
+    /// <param name="versionValueIndex">The index of the <c>sdk.version</c> value.</param>
+    private static string PropertySeparator(string original, int versionValueIndex)
+    {
+        int lineStart = original.LastIndexOf('\n', versionValueIndex) + 1;
+        int keyStart = lineStart;
+        while (original[keyStart] is ' ' or '\t')
+        {
+            keyStart++;
+        }
+
+        if (string.CompareOrdinal(original, keyStart, "\"version\"", 0, "\"version\"".Length) != 0)
+        {
+            return " ";
+        }
+
+        string lineBreak = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return lineBreak + original[lineStart..keyStart];
     }
 
     /// <summary>

@@ -130,6 +130,34 @@ public class BumpDotNetVersionStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Bumped_sdk_version_gets_a_roll_forward_policy_when_none_is_set()
+    {
+        // Arrange
+        var globalJson = tempDirectory / "global.json";
+        globalJson.WriteAllText(
+            """
+            {
+              "sdk": {
+                "version": "8.0.100"
+              }
+            }
+            """);
+
+        // Act
+        await new BumpDotNetVersionStep().ExecuteAsync(context, summary);
+
+        // Assert
+        globalJson.ReadAllText().Should().Contain(
+            """
+                "version": "10.0.100",
+                "rollForward": "latestFeature"
+              }
+            """);
+        summary.FilesChanged.Should().Be(1);
+        summary.EditCount.Should().Be(2);
+    }
+
+    [Fact]
     public async Task Already_pinned_sdk_version_is_left_unchanged()
     {
         // Arrange

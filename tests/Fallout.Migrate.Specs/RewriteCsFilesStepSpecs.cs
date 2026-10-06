@@ -77,6 +77,22 @@ public class RewriteCsFilesStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Files_are_rewritten_when_the_repository_sits_under_a_bin_folder()
+    {
+        // Arrange
+        var repository = tempDirectory / "bin" / "repo";
+        (repository / "Build.cs").WriteAllText("using Nuke.Common;");
+        var repositoryContext = new MigrationContext(repository, dryRun: false, TextWriter.Null);
+
+        // Act
+        await new RewriteCsFilesStep().ExecuteAsync(repositoryContext, summary);
+
+        // Assert
+        summary.EditCount.Should().Be(1);
+        (repository / "Build.cs").ReadAllText().Should().Contain("using Fallout.Common;");
+    }
+
+    [Fact]
     public async Task NukeBuild_base_type_is_renamed_to_FalloutBuild()
     {
         (tempDirectory / "Build.cs").WriteAllText("class Build : NukeBuild { }");

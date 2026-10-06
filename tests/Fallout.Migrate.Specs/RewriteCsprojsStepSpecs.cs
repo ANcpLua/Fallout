@@ -221,6 +221,30 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Cryptography_xml_pin_in_a_props_file_is_kept()
+    {
+        // A pin in a root Directory.Build.props applies to every project in the repository,
+        // so only the pin in a project file is stripped.
+        // Arrange
+        const string input = """
+                             <Project>
+                               <ItemGroup>
+                                 <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+                               </ItemGroup>
+                             </Project>
+                             """;
+
+        (tempDirectory / "Directory.Build.props").WriteAllText(input, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        summary.EditCount.Should().Be(0);
+        (tempDirectory / "Directory.Build.props").ReadAllText().Should().Be(input);
+    }
+
+    [Fact]
     public async Task Other_system_packages_are_left_alone()
     {
         // Only System.Security.Cryptography.Xml is the known culprit. Other System.* packages

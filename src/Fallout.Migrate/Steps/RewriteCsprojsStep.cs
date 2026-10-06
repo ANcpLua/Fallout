@@ -15,7 +15,7 @@ namespace Fallout.Migrate.Steps;
 /// (pinning the current Fallout version where a <c>Version</c> or <c>VersionOverride</c> attribute
 /// was present), <c>Nuke*</c> MSBuild properties are renamed to <c>Fallout*</c>, version properties
 /// are bumped wherever they are defined, and stale explicit
-/// <c>System.Security.Cryptography.Xml</c> pins are stripped.
+/// <c>System.Security.Cryptography.Xml</c> pins are stripped from <c>*.csproj</c> files.
 /// </summary>
 internal sealed class RewriteCsprojsStep : IMigrationStep
 {
@@ -83,7 +83,8 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
     // requires a newer version (10.0.6+) and the conflict trips NU1605 ("Detected package
     // downgrade"). Removing the explicit pin lets the transitive version win, which is what the
     // migrated project wants (#217). Matches a self-closing element with optional surrounding
-    // indentation + trailing newline.
+    // indentation + trailing newline. Applied to *.csproj only: a pin in a *.props file such as
+    // a root Directory.Build.props applies to every project in the repository, not just the build.
     private static readonly Regex cryptographyXmlPackageRefPattern = new(
         @"^[ \t]*<PackageReference\s+Include=""System\.Security\.Cryptography\.Xml""[^/]*/>[ \t]*\r?\n?",
         RegexOptions.Compiled | RegexOptions.Multiline);
@@ -105,7 +106,11 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
             MigrationFileOperations.ApplyRewrite(
                 context,
                 path,
-                content => Rewrite(content, context.FalloutVersion, variables),
+                content => Rewrite(
+                    content,
+                    context.FalloutVersion,
+                    variables,
+                    isProjectFile: path.ToString().EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)),
                 summary);
         }
 
@@ -132,8 +137,9 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
     /// <param name="original">The original <c>.csproj</c> or <c>.props</c> file content.</param>
     /// <param name="falloutVersion">The Fallout version to pin into rewritten versioned references.</param>
     /// <param name="variables">The version variables classified over all files.</param>
+    /// <param name="isProjectFile"><c>true</c> for a <c>.csproj</c>, <c>false</c> for a <c>.props</c> file.</param>
     /// <returns>The rewritten content and the number of edits made.</returns>
-    private static RewriteResult Rewrite(string original, string falloutVersion, VersionVariables variables)
+    private static RewriteResult Rewrite(string original, string falloutVersion, VersionVariables variables, bool isProjectFile)
     {
         var edits = 0;
         var content = original;
@@ -174,12 +180,15 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
             return string.Empty;
         });
 
-        // Pass 4 — strip the stale System.Security.Cryptography.Xml direct pin.
-        content = cryptographyXmlPackageRefPattern.Replace(content, _ =>
+        // Pass 4 — strip the stale System.Security.Cryptography.Xml direct pin (project files only).
+        if (isProjectFile)
         {
-            edits++;
-            return string.Empty;
-        });
+            content = cryptographyXmlPackageRefPattern.Replace(content, _ =>
+            {
+                edits++;
+                return string.Empty;
+            });
+        }
 
         return HandleMsBuildVariable(falloutVersion, content, edits, variables);
     }

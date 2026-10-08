@@ -18,8 +18,10 @@ internal sealed class RewriteCsFilesStep : IMigrationStep
     // the canonical v11 namespace in one edit instead of the now-dead
     // `Fallout.Common.ProjectModel`. Matching both source prefixes also fixes
     // already-partially-migrated code. Mirrors the codefix mapping from #253.
+    // The leading `(?<![\w.])` lookbehind keeps the namespace inside another dotted name
+    // (`Acme.Nuke.Common.ProjectModel`) as it is, the same as in namespacePrefix below.
     private static readonly Regex projectModelNamespace =
-        new(@"\b(?:Nuke|Fallout)\.Common\.ProjectModel\b", RegexOptions.Compiled);
+        new(@"(?<![\w.])(?:Nuke|Fallout)\.Common\.ProjectModel\b", RegexOptions.Compiled);
 
     // Anchored prefix swap: `Nuke.` → `Fallout.`. Covers using directives,
     // attribute references, qualified type names, namespace declarations.

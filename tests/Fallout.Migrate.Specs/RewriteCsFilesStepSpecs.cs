@@ -77,6 +77,46 @@ public class RewriteCsFilesStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Project_model_namespace_inside_another_dotted_name_is_left_alone()
+    {
+        // Arrange
+        const string input = """
+                             using Acme.Nuke.Common.ProjectModel;
+                             using Nuke.Common.ProjectModel;
+                             """;
+
+        (tempDirectory / "Build.cs").WriteAllText(input, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsFilesStep().ExecuteAsync(context, summary);
+
+        // Assert
+        summary.EditCount.Should().Be(1);
+        var buildCs = (tempDirectory / "Build.cs").ReadAllText();
+        buildCs.Should().Contain("using Acme.Nuke.Common.ProjectModel;");
+        buildCs.Should().Contain("using Fallout.Solutions;");
+    }
+
+    [Theory]
+    [InlineData("bin")]
+    [InlineData("obj")]
+    [InlineData(".git")]
+    public async Task Files_in_an_ignored_folder_below_the_root_are_skipped(string folder)
+    {
+        // Arrange
+        const string input = "using Nuke.Common;";
+        var ignoredFile = tempDirectory / "src" / folder / "Gen.cs";
+        ignoredFile.WriteAllText(input, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsFilesStep().ExecuteAsync(context, summary);
+
+        // Assert
+        summary.EditCount.Should().Be(0);
+        ignoredFile.ReadAllText().Should().Be(input);
+    }
+
+    [Fact]
     public async Task Files_are_rewritten_when_the_repository_sits_under_a_bin_folder()
     {
         // Arrange

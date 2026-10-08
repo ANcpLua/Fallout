@@ -54,14 +54,24 @@ internal sealed class BumpDotNetVersionStep : IMigrationStep
     /// The roll-forward policy added to <c>global.json</c> when the SDK is pinned and no policy is set.
     /// Without one, the default <c>patch</c> policy needs a 10.0.1xx SDK, so a machine with only a
     /// later feature band (for example 10.0.4xx) fails every <c>dotnet</c> command.
+    /// Fallout's own <c>global.json</c> uses <c>latestMinor</c>. <c>latestFeature</c> is used here
+    /// because it allows a later feature band but never a later minor version, so it changes less
+    /// in the migrated repository.
     /// </summary>
     private const string RollForward = "latestFeature";
 
     /// <summary>
-    /// Matches a <c>rollForward</c> property inside <c>global.json</c>'s <c>sdk</c> object.
+    /// The roll-forward policies that accept only an SDK from the pinned feature band (10.0.1xx).
+    /// An existing one is kept, but the user gets a warning.
+    /// </summary>
+    private static readonly string[] pinnedFeatureBandPolicies = ["patch", "latestPatch", "disable"];
+
+    /// <summary>
+    /// Matches a <c>rollForward</c> property inside <c>global.json</c>'s <c>sdk</c> object, and
+    /// captures its value.
     /// </summary>
     private static readonly Regex sdkRollForwardPattern = new(
-        @"""sdk""\s*:\s*\{[^}]*""rollForward""",
+        @"""sdk""\s*:\s*\{[^}]*""rollForward""(?:\s*:\s*""(?<value>[^""]*)"")?",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
     /// <inheritdoc />
@@ -74,10 +84,40 @@ internal sealed class BumpDotNetVersionStep : IMigrationStep
 
         foreach (var path in MigrationFileOperations.EnumerateFiles(context.RootDirectory, "global.json"))
         {
-            MigrationFileOperations.ApplyRewrite(context, path, BumpSdkVersion, summary);
+            MigrationFileOperations.ApplyRewrite(
+                context,
+                path,
+                original =>
+                {
+                    var result = BumpSdkVersion(original);
+                    if (result.EditCount > 0 && KeptPinnedFeatureBandPolicy(result.Content) is { } policy)
+                    {
+                        summary.Warnings.Add(
+                            $"{MigrationFileOperations.RelativePath(context.RootDirectory, path)} keeps \"rollForward\": \"{policy}\". " +
+                            $"With the new SDK pin {SdkVersion}, this policy needs a 10.0.1xx SDK, so a machine with only " +
+                            "a later feature band (for example 10.0.4xx) fails every dotnet command. " +
+                            $"Change it to \"{RollForward}\" unless you need exactly that feature band.");
+                    }
+
+                    return result;
+                },
+                summary);
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Returns the <c>rollForward</c> value of <paramref name="content"/> when it is one of
+    /// <see cref="pinnedFeatureBandPolicies"/>, otherwise <c>null</c>.
+    /// </summary>
+    /// <param name="content">The <c>global.json</c> content after the SDK pin was bumped.</param>
+    private static string KeptPinnedFeatureBandPolicy(string content)
+    {
+        var value = sdkRollForwardPattern.Match(content).Groups["value"];
+        return value.Success && Array.Exists(pinnedFeatureBandPolicies, p => p.Equals(value.Value, StringComparison.OrdinalIgnoreCase))
+            ? value.Value
+            : null;
     }
 
     /// <summary>

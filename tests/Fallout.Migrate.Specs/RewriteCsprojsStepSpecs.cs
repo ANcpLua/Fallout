@@ -638,6 +638,98 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Files_without_a_redirected_reference_are_unchanged_when_a_variable_is_decoupled()
+    {
+        // Arrange
+        (tempDirectory / "Directory.Packages.props").WriteAllText("""
+                                                                  <Project>
+                                                                    <PropertyGroup>
+                                                                      <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+                                                                    </PropertyGroup>
+                                                                    <ItemGroup>
+                                                                      <PackageVersion Include="Nuke.Common" Version="$(ToolsVersion)" />
+                                                                      <PackageVersion Include="Serilog" Version="$(ToolsVersion)" />
+                                                                    </ItemGroup>
+                                                                  </Project>
+                                                                  """, eofLineBreak: false);
+        const string versionProps = """
+                                    <Project>
+                                      <PropertyGroup>
+                                        <ToolsVersion>4.0.0</ToolsVersion>
+                                      </PropertyGroup>
+                                    </Project>
+                                    """;
+        (tempDirectory / "Version.props").WriteAllText(versionProps, eofLineBreak: false);
+        const string libraryProject = """
+                                      <Project Sdk="Microsoft.NET.Sdk">
+                                        <PropertyGroup>
+                                          <TargetFramework>net10.0</TargetFramework>
+                                        </PropertyGroup>
+                                      </Project>
+                                      """;
+        (tempDirectory / "src" / "Lib.csproj").WriteAllText(libraryProject, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        var packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        packages.Should().Contain("""<PackageVersion Include="Fallout.Common" Version="$(FalloutVersion)" />""");
+        packages.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>");
+        (tempDirectory / "Version.props").ReadAllText().Should().Be(versionProps);
+        (tempDirectory / "src" / "Lib.csproj").ReadAllText().Should().Be(libraryProject);
+    }
+
+    [Fact]
+    public async Task Version_variable_before_include_is_decoupled()
+    {
+        // Arrange
+        (tempDirectory / "Directory.Packages.props").WriteAllText("""
+                                                                  <Project>
+                                                                    <PropertyGroup>
+                                                                      <ToolsVersion>4.0.0</ToolsVersion>
+                                                                    </PropertyGroup>
+                                                                    <ItemGroup>
+                                                                      <PackageVersion Version="$(ToolsVersion)" Include="Nuke.Common" />
+                                                                      <PackageVersion Version="$(ToolsVersion)" Include="Serilog" />
+                                                                    </ItemGroup>
+                                                                  </Project>
+                                                                  """, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        var packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        packages.Should().Contain("""<PackageVersion Version="$(FalloutVersion)" Include="Fallout.Common" />""");
+        packages.Should().Contain("""<PackageVersion Version="$(ToolsVersion)" Include="Serilog" />""");
+        packages.Should().Contain("<ToolsVersion>4.0.0</ToolsVersion>");
+        packages.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>");
+    }
+
+    [Fact]
+    public async Task Version_range_is_kept_as_written()
+    {
+        // Arrange
+        (tempDirectory / "build" / "_build.csproj").WriteAllText("""
+                                                                 <Project Sdk="Microsoft.NET.Sdk">
+                                                                   <ItemGroup>
+                                                                     <PackageReference Include="Nuke.Common" Version="[10.1.0,)" />
+                                                                     <PackageReference Include="Nuke.Components" Version="(10.1.0,11.0.0)" />
+                                                                   </ItemGroup>
+                                                                 </Project>
+                                                                 """, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        var buildCsproj = (tempDirectory / "build" / "_build.csproj").ReadAllText();
+        buildCsproj.Should().Contain("""<PackageReference Include="Fallout.Common" Version="[10.1.0,)" />""");
+        buildCsproj.Should().Contain("""<PackageReference Include="Fallout.Components" Version="(10.1.0,11.0.0)" />""");
+    }
+
+    [Fact]
     public async Task Stale_version_override_is_pinned_to_the_current_fallout_version()
     {
         // Arrange

@@ -427,7 +427,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Decouples_ambiguously_used_variables()
+    public async Task Shared_version_variable_is_redirected_to_FalloutVersion()
     {
         const string input = """
                              <Project Sdk="Microsoft.NET.Sdk">
@@ -454,7 +454,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Decouples_ambiguously_used_variables_even_when_no_property_group_found()
+    public async Task Shared_version_variable_is_redirected_when_the_file_has_no_property_group()
     {
         const string input = """
                              <Project Sdk="Microsoft.NET.Sdk">
@@ -479,7 +479,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Decouples_ambiguously_used_variables_when_a_property_group_but_no_variable_exists()
+    public async Task Shared_version_variable_is_redirected_when_the_file_has_an_empty_property_group()
     {
         const string input = """
                              <Project Sdk="Microsoft.NET.Sdk">
@@ -599,7 +599,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Version_variable_shared_with_another_package_in_another_file_is_decoupled()
+    public async Task Version_variable_shared_across_files_is_redirected_to_FalloutVersion()
     {
         // Arrange
         (tempDirectory / "Directory.Packages.props").WriteAllText("""
@@ -631,7 +631,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
         await new RewriteCsprojsStep().ExecuteAsync(context, summary);
 
         // Assert
-        var packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        string packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
         packages.Should().Contain("""<PackageVersion Include="Fallout.Common" Version="$(FalloutVersion)" />""");
         packages.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>");
         (tempDirectory / "Version.props").ReadAllText().Should().Contain("<ToolsVersion>4.0.0</ToolsVersion>");
@@ -700,7 +700,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Files_without_a_redirected_reference_are_unchanged_when_a_variable_is_decoupled()
+    public async Task Only_files_with_a_redirected_reference_get_the_FalloutVersion_property()
     {
         // Arrange
         (tempDirectory / "Directory.Packages.props").WriteAllText("""
@@ -735,7 +735,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
         await new RewriteCsprojsStep().ExecuteAsync(context, summary);
 
         // Assert
-        var packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        string packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
         packages.Should().Contain("""<PackageVersion Include="Fallout.Common" Version="$(FalloutVersion)" />""");
         packages.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>");
         (tempDirectory / "Version.props").ReadAllText().Should().Be(versionProps);
@@ -743,7 +743,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
-    public async Task Version_variable_before_include_is_decoupled()
+    public async Task Version_variable_before_include_is_redirected_to_FalloutVersion()
     {
         // Arrange
         (tempDirectory / "Directory.Packages.props").WriteAllText("""
@@ -762,7 +762,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
         await new RewriteCsprojsStep().ExecuteAsync(context, summary);
 
         // Assert
-        var packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        string packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
         packages.Should().Contain("""<PackageVersion Version="$(FalloutVersion)" Include="Fallout.Common" />""");
         packages.Should().Contain("""<PackageVersion Version="$(ToolsVersion)" Include="Serilog" />""");
         packages.Should().Contain("<ToolsVersion>4.0.0</ToolsVersion>");
@@ -786,7 +786,7 @@ public class RewriteCsprojsStepSpecs : IDisposable
         await new RewriteCsprojsStep().ExecuteAsync(context, summary);
 
         // Assert
-        var buildCsproj = (tempDirectory / "build" / "_build.csproj").ReadAllText();
+        string buildCsproj = (tempDirectory / "build" / "_build.csproj").ReadAllText();
         buildCsproj.Should().Contain("""<PackageReference Include="Fallout.Common" Version="[10.1.0,)" />""");
         buildCsproj.Should().Contain("""<PackageReference Include="Fallout.Components" Version="(10.1.0,11.0.0)" />""");
     }

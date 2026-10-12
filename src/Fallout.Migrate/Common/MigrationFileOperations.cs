@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Fallout.Common.IO;
 
 namespace Fallout.Migrate.Common;
@@ -55,14 +56,17 @@ internal static class MigrationFileOperations
     /// Reads a file and reports an unreadable file as a warning.
     /// </summary>
     /// <remarks>
-    /// Only file access failures are handled here. Exceptions from rewriting or writing a file
-    /// propagate to the caller. A failed read must be skipped, not classified as an empty file.
+    /// Only file access failures are handled here: an <see cref="IOException"/>, such as a missing file,
+    /// and an <see cref="UnauthorizedAccessException"/>, such as a directory or a denied permission.
+    /// Exceptions from rewriting or writing a file propagate to the caller.
+    /// A failed read must be skipped, not classified as an empty file.
     /// </remarks>
     public static bool TryRead(MigrationContext context, AbsolutePath path, Summary summary, out string content)
     {
         try
         {
-            content = path.ReadAllText();
+            // Not AbsolutePath.ReadAllText: it throws an ArgumentException for a missing file before reading.
+            content = File.ReadAllText(path, Encoding.UTF8);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

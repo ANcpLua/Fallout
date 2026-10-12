@@ -637,6 +637,68 @@ public class RewriteCsprojsStepSpecs : IDisposable
         (tempDirectory / "Version.props").ReadAllText().Should().Contain("<ToolsVersion>4.0.0</ToolsVersion>");
     }
 
+    [Theory]
+    [InlineData("FalloutVersion")]
+    [InlineData("NukeVersion")]
+    public async Task An_existing_version_property_in_another_file_is_reused(string propertyName)
+    {
+        // Arrange
+        (tempDirectory / "Directory.Packages.props").WriteAllText("""
+                                                                  <Project>
+                                                                    <Import Project="Version.props" />
+                                                                    <ItemGroup>
+                                                                      <PackageVersion Include="Nuke.Common" Version="$(ToolsVersion)" />
+                                                                      <PackageVersion Include="Serilog" Version="$(ToolsVersion)" />
+                                                                    </ItemGroup>
+                                                                  </Project>
+                                                                  """, eofLineBreak: false);
+        (tempDirectory / "build" / "_build.csproj").WriteAllText("""
+                                                                 <Project>
+                                                                   <Import Project="../Version.props" />
+                                                                   <PropertyGroup>
+                                                                     <TargetFramework>net10.0</TargetFramework>
+                                                                   </PropertyGroup>
+                                                                   <ItemGroup>
+                                                                     <PackageReference Include="Nuke.Components" Version="$(ToolsVersion)" />
+                                                                   </ItemGroup>
+                                                                 </Project>
+                                                                 """, eofLineBreak: false);
+        (tempDirectory / "Version.props").WriteAllText($"""
+                                                       <Project>
+                                                         <PropertyGroup>
+                                                           <{propertyName}>10.1.0</{propertyName}>
+                                                           <ToolsVersion>4.0.0</ToolsVersion>
+                                                         </PropertyGroup>
+                                                       </Project>
+                                                       """, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        string packages = (tempDirectory / "Directory.Packages.props").ReadAllText();
+        packages.Should().Contain("""<PackageVersion Include="Fallout.Common" Version="$(FalloutVersion)" />""");
+        packages.Should().Contain("""<PackageVersion Include="Serilog" Version="$(ToolsVersion)" />""");
+        packages.Should().NotContain("<FalloutVersion>");
+        string buildProject = (tempDirectory / "build" / "_build.csproj").ReadAllText();
+        buildProject.Should().Contain("""<PackageReference Include="Fallout.Components" Version="$(FalloutVersion)" />""");
+        buildProject.Should().NotContain("<FalloutVersion>");
+        (tempDirectory / "Version.props").ReadAllText().Should().Be("""
+            <Project>
+              <PropertyGroup>
+                <FalloutVersion>11.0.0</FalloutVersion>
+                <ToolsVersion>4.0.0</ToolsVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // The new references and the existing property are stable on subsequent runs.
+        var secondRun = new Summary();
+        await new RewriteCsprojsStep().ExecuteAsync(context, secondRun);
+        secondRun.EditCount.Should().Be(0);
+        secondRun.FilesChanged.Should().Be(0);
+    }
+
     [Fact]
     public async Task Files_without_a_redirected_reference_are_unchanged_when_a_variable_is_decoupled()
     {

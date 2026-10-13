@@ -20,7 +20,7 @@ internal sealed class VersionVariables
     /// The match is case-sensitive and permits whitespace before <c>&gt;</c>, but no attributes.
     /// </remarks>
     private static readonly Regex falloutVersionPropertyPattern =
-        new(@"<(?:Nuke|Fallout)Version\s*>", RegexOptions.Compiled);
+        new("""<(?:Nuke|Fallout)Version\s*>""", RegexOptions.Compiled);
 
     /// <summary>
     /// Property names whose values should be updated to the current Fallout version.
@@ -64,10 +64,10 @@ internal sealed class VersionVariables
         {
             foreach (Match match in MsBuildPatterns.VariableVersionItem.Matches(content))
             {
-                string packageName = match.Groups["include"].Value;
+                string packageName = MsBuildPatterns.PackageNameOf(match).Value;
                 bool isFalloutPackage = packageName.StartsWith("Nuke.", StringComparison.Ordinal) ||
                                         packageName.StartsWith("Fallout.", StringComparison.Ordinal);
-                (isFalloutPackage ? falloutVariables : nonFalloutVariables).Add(match.Groups["variable"].Value);
+                (isFalloutPackage ? falloutVariables : nonFalloutVariables).Add(MsBuildPatterns.VariableNameOf(match).Value);
             }
 
             result.DefinesFalloutVersion |= falloutVersionPropertyPattern.IsMatch(content);

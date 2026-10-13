@@ -127,8 +127,8 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
         int edits = 0;
         string content = MsBuildPatterns.VariableVersionItem.Replace(previous.Content, match =>
         {
-            Group variableName = match.Groups["variable"];
-            if (!match.Groups["include"].Value.StartsWith("Fallout.", StringComparison.Ordinal) ||
+            Group variableName = MsBuildPatterns.VariableNameOf(match);
+            if (!MsBuildPatterns.PackageNameOf(match).Value.StartsWith("Fallout.", StringComparison.Ordinal) ||
                 !variables.Ambiguous.Contains(variableName.Value))
             {
                 return match.Value;
@@ -137,8 +137,7 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
             // Runs after renaming packages. Change only the variable name in Fallout references,
             // leaving the shared property and the unrelated package references unchanged.
             edits++;
-            int offset = variableName.Index - match.Index;
-            return match.Value.Remove(offset, variableName.Length).Insert(offset, VersionVariables.FalloutVersionVariable);
+            return ReplaceGroupValue(match, variableName, VersionVariables.FalloutVersionVariable);
         });
 
         var result = new RewriteResult(content, previous.EditCount + edits);
@@ -147,6 +146,15 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
         return edits > 0 && !variables.DefinesFalloutVersion
             ? InsertFalloutVersionProperty(result, falloutVersion)
             : result;
+    }
+
+    /// <summary>
+    /// Replaces the text one group captured and keeps the rest of the matched text as written.
+    /// </summary>
+    private static string ReplaceGroupValue(Match match, Group group, string replacement)
+    {
+        int offset = group.Index - match.Index;
+        return match.Value.Remove(offset, group.Length).Insert(offset, replacement);
     }
 
     private static RewriteResult InsertFalloutVersionProperty(RewriteResult previous, string falloutVersion)
@@ -210,5 +218,5 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
     /// Property names and values are case-sensitive.
     /// </remarks>
     private static Regex CreatePropertyValuePattern(string variableName) =>
-        new($@"(?<=<{variableName}\s*>)[^<]+(?=</{variableName}\s*>)");
+        new($"""(?<=<{variableName}\s*>)[^<]+(?=</{variableName}\s*>)""");
 }

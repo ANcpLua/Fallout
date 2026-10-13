@@ -20,7 +20,7 @@ internal static class MsBuildPatterns
     /// name or version separately. A <c>&gt;</c> inside an attribute value ends the match early.
     /// </remarks>
     public static readonly Regex PackageItem = new(
-        @"<(?:PackageReference|PackageVersion|PackageDownload)\b[^>]*>",
+        """<(?:PackageReference|PackageVersion|PackageDownload)\b[^>]*>""",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -31,7 +31,7 @@ internal static class MsBuildPatterns
     /// The attribute name and the rest of the item name stay unchanged.
     /// </remarks>
     public static readonly Regex NukeItemName =
-        new(@"(?<=\b(?:Include|Update|Remove)="")Nuke\.(?=[A-Z])", RegexOptions.Compiled);
+        new("""(?<=\b(?:Include|Update|Remove)=")Nuke\.(?=[A-Z])""", RegexOptions.Compiled);
 
     /// <summary>
     /// Finds a literal version in a <c>Version</c> or <c>VersionOverride</c> attribute.
@@ -42,7 +42,7 @@ internal static class MsBuildPatterns
     /// are excluded. Replacing only one bound of a range would leave an invalid version.
     /// </remarks>
     public static readonly Regex LiteralVersion = new(
-        @"(?<=\bVersion(?:Override)?=""\[?)(?!\$\()[^""\[\],()]+(?=\]?"")",
+        """(?<=\bVersion(?:Override)?="\[?)(?!\$\()[^"\[\],()]+(?=\]?")""",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -56,24 +56,37 @@ internal static class MsBuildPatterns
     /// A <c>&gt;</c> inside an attribute value ends the tag match early.
     /// </remarks>
     public static readonly Regex VariableVersionItem = new(
-        @"<(?:PackageReference|PackageVersion)\b(?=[^>]*\bInclude=""(?<include>[^""]+)"")(?=[^>]*\bVersion=""\$\((?<variable>[^)]+)\)"")[^>]*>",
+        """<(?:PackageReference|PackageVersion)\b(?=[^>]*\bInclude="(?<include>[^"]+)")(?=[^>]*\bVersion="\$\((?<variable>[^)]+)\)")[^>]*>""",
         RegexOptions.Compiled);
+
+    /// <summary>The package name in a <see cref="VariableVersionItem"/> match.</summary>
+    public static Group PackageNameOf(Match variableVersionItem) => variableVersionItem.Groups["include"];
+
+    /// <summary>The version variable name, without <c>$(...)</c>, in a <see cref="VariableVersionItem"/> match.</summary>
+    public static Group VariableNameOf(Match variableVersionItem) => variableVersionItem.Groups["variable"];
+
+    /// <summary>
+    /// The MSBuild properties Fallout renamed from <c>Nuke*</c> to <c>Fallout*</c>, without their prefix.
+    /// </summary>
+    private static readonly string[] RenamedNukePropertySuffixes =
+    [
+        "Version", "RootDirectory", "ScriptDirectory", "BaseDirectory", "BaseNamespace",
+        "UseNestedNamespaces", "RepositoryUrl", "UpdateReferences", "ContinueOnError", "TaskTimeout",
+        "Timeout", "TasksEnabled", "DefaultExcludes", "ExcludeBoot", "ExcludeConfig", "ExcludeLogs",
+        "ExcludeDirectoryBuild", "ExcludeCi", "SpecificationFiles", "ExternalFiles", "TasksAssembly",
+        "TasksDirectory"
+    ];
 
     /// <summary>
     /// Finds the <c>Nuke</c> prefix of known MSBuild properties that were renamed in Fallout.
     /// </summary>
     /// <remarks>
-    /// Only the prefix is matched. The listed property suffixes limit the rename to known names,
-    /// including both element names and references such as <c>$(NukeVersion)</c>.
+    /// Only the prefix is matched. <see cref="RenamedNukePropertySuffixes"/> limits the rename to known
+    /// names, including both element names and references such as <c>$(NukeVersion)</c>.
     /// Unrelated user-defined names such as <c>NukeCustomProperty</c> are excluded.
     /// </remarks>
     public static readonly Regex NukePropertyName = new(
-        @"\bNuke(?=" +
-        "(?:Version|RootDirectory|ScriptDirectory|BaseDirectory|BaseNamespace|" +
-        "UseNestedNamespaces|RepositoryUrl|UpdateReferences|ContinueOnError|TaskTimeout|" +
-        "Timeout|TasksEnabled|DefaultExcludes|ExcludeBoot|ExcludeConfig|ExcludeLogs|" +
-        "ExcludeDirectoryBuild|ExcludeCi|SpecificationFiles|ExternalFiles|TasksAssembly|" +
-        "TasksDirectory)\\b)",
+        $"""\bNuke(?=(?:{string.Join('|', RenamedNukePropertySuffixes)})\b)""",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -85,7 +98,7 @@ internal static class MsBuildPatterns
     /// so the whole property is deleted rather than renamed.
     /// </remarks>
     public static readonly Regex TelemetryVersionProperty = new(
-        @"^[ \t]*<(?<tag>(?:Nuke|Fallout)TelemetryVersion)>.*?</\k<tag>>[ \t]*\r?\n?",
+        """^[ \t]*<(?<tag>(?:Nuke|Fallout)TelemetryVersion)>.*?</\k<tag>>[ \t]*\r?\n?""",
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     /// <summary>
@@ -97,6 +110,6 @@ internal static class MsBuildPatterns
     /// dependency version to win. A pin in a shared props file is kept because it affects other projects.
     /// </remarks>
     public static readonly Regex CryptographyXmlPackageReference = new(
-        @"^[ \t]*<PackageReference\s+Include=""System\.Security\.Cryptography\.Xml""[^/]*/>[ \t]*\r?\n?",
+        """^[ \t]*<PackageReference\s+Include="System\.Security\.Cryptography\.Xml"[^/]*/>[ \t]*\r?\n?""",
         RegexOptions.Compiled | RegexOptions.Multiline);
 }

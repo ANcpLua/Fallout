@@ -153,7 +153,7 @@ partial class Build : IConfigureGitHubActions
             pipeline.Insert(GitHubActionsStepPosition.PostRun, new GitHubActionsCustomStep
             {
                 Name = "Upload risk-report SARIF to GitHub code scanning",
-                Uses = "github/codeql-action/upload-sarif@v3",
+                Uses = "github/codeql-action/upload-sarif@v4",
                 With = new Dictionary<string, string>
                 {
                     ["sarif_file"] = "output/packageguard/risk-report.sarif",

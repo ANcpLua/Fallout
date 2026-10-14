@@ -245,6 +245,32 @@ public class RewriteCsprojsStepSpecs : IDisposable
     }
 
     [Fact]
+    public async Task Cryptography_xml_pin_with_version_before_include_is_stripped()
+    {
+        // Arrange
+        (tempDirectory / "build" / "_build.csproj").WriteAllText("""
+                                                                 <Project Sdk="Microsoft.NET.Sdk">
+                                                                   <ItemGroup>
+                                                                     <PackageReference Include="Fallout.Common" Version="10.3.49" />
+                                                                     <PackageReference Version="9.0.15" Include="System.Security.Cryptography.Xml" />
+                                                                   </ItemGroup>
+                                                                 </Project>
+                                                                 """, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        (tempDirectory / "build" / "_build.csproj").ReadAllText().Should().Be("""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="Fallout.Common" Version="10.3.49" />
+              </ItemGroup>
+            </Project>
+            """);
+    }
+
+    [Fact]
     public async Task Other_system_packages_are_left_alone()
     {
         // Only System.Security.Cryptography.Xml is the known culprit. Other System.* packages
@@ -767,6 +793,67 @@ public class RewriteCsprojsStepSpecs : IDisposable
         packages.Should().Contain("""<PackageVersion Version="$(ToolsVersion)" Include="Serilog" />""");
         packages.Should().Contain("<ToolsVersion>4.0.0</ToolsVersion>");
         packages.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>");
+    }
+
+    [Theory]
+    [InlineData("""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <PkgVersion>10.1.0</PkgVersion>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <PackageReference Include="Nuke.Common" Version="$(PkgVersion)" />
+                    <PackageReference Include="Some.ThirdParty" Version="$(PkgVersion)" />
+                  </ItemGroup>
+                </Project>
+                """)]
+    [InlineData("""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <ItemGroup>
+                    <PackageReference Include="Nuke.Common" Version="$(PkgVersion)" />
+                    <PackageReference Include="Some.ThirdParty" Version="$(PkgVersion)" />
+                  </ItemGroup>
+                </Project>
+                """)]
+    public async Task FalloutVersion_property_uses_the_line_endings_of_the_file(string input)
+    {
+        // Arrange
+        (tempDirectory / "build" / "_build.csproj").WriteAllText(input.ReplaceLineEndings("\r\n"), eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        string buildProject = (tempDirectory / "build" / "_build.csproj").ReadAllText();
+        buildProject.Should().Contain("<FalloutVersion>11.0.0</FalloutVersion>\r\n");
+        buildProject.Replace("\r\n", string.Empty).Should().NotContain("\n");
+    }
+
+    [Fact]
+    public async Task Version_variable_with_regex_characters_in_its_name_is_matched_literally()
+    {
+        // Arrange
+        const string input = """
+                             <Project Sdk="Microsoft.NET.Sdk">
+                               <PropertyGroup>
+                                 <Odd[Name>10.1.0</Odd[Name>
+                                 <OddXName>10.1.0</OddXName>
+                               </PropertyGroup>
+                               <ItemGroup>
+                                 <PackageReference Include="Nuke.Common" Version="$(Odd[Name)" />
+                               </ItemGroup>
+                             </Project>
+                             """;
+        (tempDirectory / "build" / "_build.csproj").WriteAllText(input, eofLineBreak: false);
+
+        // Act
+        await new RewriteCsprojsStep().ExecuteAsync(context, summary);
+
+        // Assert
+        string buildProject = (tempDirectory / "build" / "_build.csproj").ReadAllText();
+        buildProject.Should().Contain("<Odd[Name>11.0.0</Odd[Name>");
+        buildProject.Should().Contain("<OddXName>10.1.0</OddXName>");
+        buildProject.Should().Contain("""<PackageReference Include="Fallout.Common" Version="$(Odd[Name)" />""");
     }
 
     [Fact]

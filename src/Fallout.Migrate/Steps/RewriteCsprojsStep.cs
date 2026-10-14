@@ -143,6 +143,8 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
         var result = new RewriteResult(content, previous.EditCount + edits);
 
         // Only a file with a redirected reference needs a property, and only if no file defines it.
+        // Each such file gets its own property. A property in one project file is not visible in
+        // another, and this step does not follow MSBuild imports to find a file that both import.
         return edits > 0 && !variables.DefinesFalloutVersion
             ? InsertFalloutVersionProperty(result, falloutVersion)
             : result;
@@ -160,12 +162,13 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
     private static RewriteResult InsertFalloutVersionProperty(RewriteResult previous, string falloutVersion)
     {
         string content = previous.Content;
+        string newLine = content.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         int propertyGroupIndex = content.IndexOf("<PropertyGroup>", StringComparison.Ordinal);
         if (propertyGroupIndex >= 0)
         {
             content = content.Insert(
                 propertyGroupIndex + "<PropertyGroup>".Length,
-                $"\n    <FalloutVersion>{falloutVersion}</FalloutVersion>");
+                $"{newLine}    <FalloutVersion>{falloutVersion}</FalloutVersion>");
             return new RewriteResult(content, previous.EditCount + 1);
         }
 
@@ -182,7 +185,7 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
 
         content = content.Insert(
             projectTagEnd + 1,
-            $"\n  <PropertyGroup>\n    <FalloutVersion>{falloutVersion}</FalloutVersion>\n  </PropertyGroup>");
+            $"{newLine}  <PropertyGroup>{newLine}    <FalloutVersion>{falloutVersion}</FalloutVersion>{newLine}  </PropertyGroup>");
         return new RewriteResult(content, previous.EditCount + 1);
     }
 
@@ -215,8 +218,11 @@ internal sealed class RewriteCsprojsStep : IMigrationStep
     /// <remarks>
     /// Lookarounds leave the opening and closing tags outside the match. Whitespace before
     /// <c>&gt;</c> is allowed, but attributes, empty values, and nested elements are not matched.
-    /// Property names and values are case-sensitive.
+    /// Property names and values are case-sensitive. The name comes from the file, so it is escaped.
     /// </remarks>
-    private static Regex CreatePropertyValuePattern(string variableName) =>
-        new($"""(?<=<{variableName}\s*>)[^<]+(?=</{variableName}\s*>)""");
+    private static Regex CreatePropertyValuePattern(string variableName)
+    {
+        string name = Regex.Escape(variableName);
+        return new Regex($"""(?<=<{name}\s*>)[^<]+(?=</{name}\s*>)""");
+    }
 }

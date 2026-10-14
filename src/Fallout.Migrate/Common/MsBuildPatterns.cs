@@ -105,11 +105,11 @@ internal static class MsBuildPatterns
     /// Finds a self-closing <c>System.Security.Cryptography.Xml</c> package reference line.
     /// </summary>
     /// <remarks>
-    /// The <c>Include</c> attribute must come first. Indentation and a trailing newline are included.
+    /// Attributes may appear in any order. Indentation and a trailing newline are included.
     /// The migration removes this direct pin only from project files, allowing Fallout's transitive
     /// dependency version to win. A pin in a shared props file is kept because it affects other projects.
     /// </remarks>
     public static readonly Regex CryptographyXmlPackageReference = new(
-        """^[ \t]*<PackageReference\s+Include="System\.Security\.Cryptography\.Xml"[^/]*/>[ \t]*\r?\n?""",
+        """^[ \t]*<PackageReference\b(?=[^>]*\bInclude="System\.Security\.Cryptography\.Xml")[^/]*/>[ \t]*\r?\n?""",
         RegexOptions.Compiled | RegexOptions.Multiline);
 }

@@ -190,9 +190,17 @@ internal partial class ParameterService(
         if (!Variables.TryGetValue(variableName, out var value))
         {
             var trimmedVariableName = GetTrimmedName(variableName);
-            var alternativeValues = Variables
-                .Where(x => GetTrimmedName(x.Key).EqualsOrdinalIgnoreCase(trimmedVariableName) ||
+
+            // Prefixed names are matched before the bare parameter name. Otherwise an unrelated
+            // bare variable would shadow the prefixed one, for example the HOST variable that login
+            // shells on openSUSE export would shadow FALLOUT_HOST.
+            var prefixedValues = Variables
+                .Where(x => GetTrimmedName(x.Key).EqualsOrdinalIgnoreCase($"FALLOUT{trimmedVariableName}") ||
                             GetTrimmedName(x.Key).EqualsOrdinalIgnoreCase($"NUKE{trimmedVariableName}")).ToList();
+
+            var alternativeValues = prefixedValues.Count > 0
+                ? prefixedValues
+                : Variables.Where(x => GetTrimmedName(x.Key).EqualsOrdinalIgnoreCase(trimmedVariableName)).ToList();
 
             if (alternativeValues.Count > 1)
             {
@@ -215,15 +223,17 @@ internal partial class ParameterService(
         }
         catch (Exception ex)
         {
-            Assert.Fail(new[]
-            {
-                ex.Message,
-                $"Resolving parameter '{variableName}' failed. Environment variable was:",
-                value
-            }.JoinNewLine());
+            // The environment is shared with the operating system, so an unrelated variable such as
+            // the Unix HOST can match a parameter by accident. Built-in parameters are also resolved
+            // in FalloutBuild's static constructor, where throwing aborts the process before any
+            // target runs. Warn and use the default instead.
+            Log.Warning(
+                "Could not resolve {VariableName} from environment variable value {Value}. Using the default value instead. {Reason}",
+                variableName,
+                value,
+                ex.Message);
 
-            // ReSharper disable once HeuristicUnreachableCode
-            return null;
+            return destinationType.GetDefaultValue();
         }
     }
 }
